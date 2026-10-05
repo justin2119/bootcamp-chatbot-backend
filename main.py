@@ -77,8 +77,9 @@ def build_llm_history(rows: list[Message]) -> list[dict[str, str]]:
 
 
 def quiz_due(rows: list[Message]) -> bool:
-    assistant_count = sum(row.role == "assistant" for row in rows)
-    return assistant_count > 0 and assistant_count % QUIZ_EVERY == 0
+    # Include the assistant reply about to be committed.
+    assistant_count = sum(row.role == "assistant" for row in rows) + 1
+    return assistant_count % QUIZ_EVERY == 0
 
 
 def make_quiz(reply: str) -> str:
@@ -88,7 +89,7 @@ def make_quiz(reply: str) -> str:
 
 
 def persist_success(conversation_id: int, expected_next_seq: int, user_text: str, reply: str, rows: list[Message]) -> str | None:
-    quiz_text = make_quiz(reply) if quiz_due([*rows, Message(role="assistant", content=reply)]) else None
+    quiz_text = make_quiz(reply) if quiz_due(rows) else None
     with SessionLocal() as session:
         if session.get(Conversation, conversation_id) is None:
             raise RuntimeError("Conversation no longer exists.")
