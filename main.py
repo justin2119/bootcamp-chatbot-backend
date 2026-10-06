@@ -6,6 +6,7 @@ from pathlib import Path
 import httpx
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import and_, select
@@ -18,7 +19,7 @@ from database.models import Conversation, Message
 load_dotenv()
 
 RODIUMAI_URL = "https://api.rodiumai.io/v1/chat/completions"
-RODIUMAI_API_KEY = os.environ["RODIUMAI_API_KEY"]
+RODIUMAI_API_KEY = os.getenv("RODIUMAI_API_KEY", "")
 AUTHORIZED_MODELS = [
     "rodium/auto",
     "anthropic/claude-sonnet-4-5-20250929",
@@ -33,6 +34,13 @@ QUIZ_EVERY = 4
 SYSTEM_PROMPT = (Path(__file__).parent / "prompts" / "system.md").read_text(encoding="utf-8")
 
 app = FastAPI(title="Study Buddy Chatbot")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173", "*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 class ConversationResponse(BaseModel):
@@ -140,6 +148,8 @@ def list_messages(conversation_id: int, db: Session = Depends(get_db)) -> list[M
 
 @app.post("/chat")
 async def chat(req: ChatRequest, db: Session = Depends(get_db)):
+    if not RODIUMAI_API_KEY:
+        raise HTTPException(status_code=500, detail="RODIUMAI_API_KEY non configurée dans le fichier .env")
     if req.model is not None and req.model not in AUTHORIZED_MODELS:
         raise HTTPException(status_code=400, detail=f"Unauthorized model '{req.model}'. Choose one of: {', '.join(AUTHORIZED_MODELS)}")
     selected_model = req.model or DEFAULT_MODEL
