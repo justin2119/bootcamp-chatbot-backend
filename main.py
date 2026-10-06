@@ -141,6 +141,18 @@ def list_conversations(db: Session = Depends(get_db)) -> list[ConversationSummar
             for conversation, content in rows]
 
 
+@app.delete("/conversations/{conversation_id}")
+def delete_conversation(conversation_id: int, db: Session = Depends(get_db)) -> dict[str, bool]:
+    conversation = db.get(Conversation, conversation_id)
+    if conversation is None:
+        raise HTTPException(status_code=404, detail="Conversation not found.")
+
+    db.query(Message).filter(Message.conversation_id == conversation_id).delete(synchronize_session=False)
+    db.delete(conversation)
+    db.commit()
+    return {"ok": True}
+
+
 @app.get("/conversations/{conversation_id}/messages")
 def list_messages(conversation_id: int, db: Session = Depends(get_db)) -> list[MessageResponse]:
     return [MessageResponse(seq=m.seq, role=m.role, content=m.content, created_at=m.created_at)
