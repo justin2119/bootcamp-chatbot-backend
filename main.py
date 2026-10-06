@@ -57,6 +57,7 @@ class ChatRequest(BaseModel):
     conversation_id: int
     message: str
     model: str | None = None
+    temperature: float | None = 0.7
     stream: bool = True
 
 
@@ -162,7 +163,7 @@ async def chat(req: ChatRequest, db: Session = Depends(get_db)):
     if not req.stream:
         try:
             async with httpx.AsyncClient(timeout=60.0) as client:
-                response = await client.post(RODIUMAI_URL, headers=headers, json={"model": selected_model, "messages": messages, "max_tokens": 512, "stream": False})
+                response = await client.post(RODIUMAI_URL, headers=headers, json={"model": selected_model, "messages": messages, "temperature": req.temperature, "max_tokens": 512, "stream": False})
                 response.raise_for_status()
                 reply = response.json()["choices"][0]["message"]["content"]
         except (httpx.HTTPError, KeyError, IndexError, TypeError, ValueError) as exc:
@@ -178,7 +179,7 @@ async def chat(req: ChatRequest, db: Session = Depends(get_db)):
         try:
             async with httpx.AsyncClient(timeout=60.0) as client:
                 async with client.stream("POST", RODIUMAI_URL, headers=headers,
-                                         json={"model": selected_model, "messages": messages, "max_tokens": 512, "stream": True}) as response:
+                                         json={"model": selected_model, "messages": messages, "temperature": req.temperature, "max_tokens": 512, "stream": True}) as response:
                     response.raise_for_status()
                     async for line in response.aiter_lines():
                         if not line.startswith("data:"):
