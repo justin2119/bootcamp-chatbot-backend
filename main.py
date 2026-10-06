@@ -28,10 +28,15 @@ AUTHORIZED_MODELS = [
 ]
 DEFAULT_MODEL = "rodium/auto"
 PREVIEW_LENGTH = 60
-LLM_ROLES = {"user", "assistant"}
+LLM_ROLES = {"user", "assistant", "quiz", "summary", "note"}
 QUIZ_ROLE = "quiz"
 QUIZ_EVERY = 4
 SYSTEM_PROMPT = (Path(__file__).parent / "prompts" / "system.md").read_text(encoding="utf-8")
+MODE_PROMPTS = {
+    "quiz": "Tu es un maître de quiz pédagogique. En français (sauf si l'élève écrit dans une autre langue), génère des questions d'évaluation pour tester ses connaissances sur le sujet demandé et le contexte de la conversation. Propose des QCM ou des questions directes, une question à la fois si cela favorise l'apprentissage. Après la réponse de l'élève, donne un feedback bref, bienveillant et précis, explique l'erreur si besoin et indique la bonne réponse. Ne révèle pas les solutions avant que l'élève ait essayé, sauf demande explicite.",
+    "summary": "Tu es un expert en synthèse pédagogique. En français (sauf si l'élève écrit dans une autre langue), résume les points clés de la leçon ou de la discussion de manière très claire et concise. Utilise des titres courts et des puces si utiles, conserve les notions et conclusions essentielles, et n'ajoute aucune information absente du contexte.",
+    "note": "Tu es un assistant spécialisé dans les fiches de révision. En français (sauf si l'élève écrit dans une autre langue), structure le contenu en fiche soignée avec définitions, formules clés et leurs variables/unités, étapes ou méthodes importantes et mémos utiles. Sois concis, exact et pédagogique; n'invente pas de contenu qui n'est pas étayé.",
+}
 
 app = FastAPI(title="Study Buddy Chatbot")
 app.add_middleware(
@@ -59,6 +64,7 @@ class ChatRequest(BaseModel):
     model: str | None = None
     temperature: float | None = 0.7
     stream: bool = True
+    mode: str | None = "default"
 
 
 class ChatResponse(BaseModel):
@@ -82,7 +88,10 @@ def load_messages(db: Session, conversation_id: int) -> list[Message]:
 
 
 def build_llm_history(rows: list[Message]) -> list[dict[str, str]]:
-    return [{"role": row.role, "content": row.content} for row in rows if row.role in LLM_ROLES]
+    return [
+        {"role": "assistant" if row.role in {"assistant", "quiz", "summary", "note"} else "user", "content": row.content}
+        for row in rows if row.role in LLM_ROLES
+    ]
 
 
 def quiz_due(rows: list[Message]) -> bool:
@@ -92,19 +101,20 @@ def quiz_due(rows: list[Message]) -> bool:
 
 
 def make_quiz(reply: str) -> str:
-    # A lightweight study prompt linked to the latest answer; quiz-role rows are never sent to the LLM.
+    # A lightweight study prompt linked to the latest answer; quiz-role rows are sent as assistant history.
     excerpt = " ".join(reply.split())[:180]
     return f"À toi de jouer : formule une question de révision sur cette idée clé : {excerpt}"
 
 
-def persist_success(conversation_id: int, expected_next_seq: int, user_text: str, reply: str, rows: list[Message]) -> str | None:
+def persist_success(conversation_id: int, expected_next_seq: int, user_text: str, reply: str, rows: list[Message], mode: str | None) -> str | None:
     quiz_text = make_quiz(reply) if quiz_due(rows) else None
+    assistant_role = mode if mode in {"quiz", "summary", "note"} else "assistant"
     with SessionLocal() as session:
         if session.get(Conversation, conversation_id) is None:
             raise RuntimeError("Conversation no longer exists.")
         session.add_all([
             Message(conversation_id=conversation_id, seq=expected_next_seq, role="user", content=user_text),
-            Message(conversation_id=conversation_id, seq=expected_next_seq + 1, role="assistant", content=reply),
+            Message(conversation_id=conversation_id, seq=expected_next_seq + 1, role=assistant_role, content=reply),
         ])
         if quiz_text:
             session.add(Message(conversation_id=conversation_id, seq=expected_next_seq + 2, role=QUIZ_ROLE, content=quiz_text))
@@ -166,10 +176,12 @@ async def chat(req: ChatRequest, db: Session = Depends(get_db)):
     if req.model is not None and req.model not in AUTHORIZED_MODELS:
         raise HTTPException(status_code=400, detail=f"Unauthorized model '{req.model}'. Choose one of: {', '.join(AUTHORIZED_MODELS)}")
     selected_model = req.model or DEFAULT_MODEL
+    selected_mode = req.mode or "default"
+    system_prompt = MODE_PROMPTS.get(selected_mode, SYSTEM_PROMPT)
     rows = load_messages(db, req.conversation_id)
     history = build_llm_history(rows)
     next_seq = rows[-1].seq + 1 if rows else 1
-    messages = [{"role": "system", "content": SYSTEM_PROMPT}, *history, {"role": "user", "content": req.message}]
+    messages = [{"role": "system", "content": system_prompt}, *history, {"role": "user", "content": req.message}]
     headers = {"Authorization": f"Bearer {RODIUMAI_API_KEY}"}
 
     if not req.stream:
@@ -181,7 +193,7 @@ async def chat(req: ChatRequest, db: Session = Depends(get_db)):
         except (httpx.HTTPError, KeyError, IndexError, TypeError, ValueError) as exc:
             raise HTTPException(status_code=502, detail="The LLM API call failed.") from exc
         try:
-            notification = persist_success(req.conversation_id, next_seq, req.message, reply, rows)
+            notification = persist_success(req.conversation_id, next_seq, req.message, reply, rows, selected_mode)
         except RuntimeError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         return ChatResponse(reply=reply, notification=notification)
@@ -210,7 +222,7 @@ async def chat(req: ChatRequest, db: Session = Depends(get_db)):
             reply = "".join(assembled)
             if not reply:
                 raise RuntimeError("The model returned an empty response.")
-            notification = persist_success(req.conversation_id, next_seq, req.message, reply, rows)
+            notification = persist_success(req.conversation_id, next_seq, req.message, reply, rows, selected_mode)
             if notification:
                 yield "data: " + json.dumps({"notification": notification}, ensure_ascii=False) + "\n\n"
             yield "data: [DONE]\n\n"
