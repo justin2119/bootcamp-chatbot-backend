@@ -16,21 +16,21 @@
 
 ---
 
-## 🧡 Architecture et fonctionnalités
+## Architecture et fonctionnalités
 
-- ⚡ FastAPI expose les conversations, l'historique, `/models` et `/chat`.
-- 💾 SQLAlchemy persiste conversations et messages avec des numéros de séquence uniques. Les rôles `user` et `assistant` forment l'historique LLM; les messages `quiz` sont visibles dans l'historique de la conversation, mais exclus du contexte envoyé au modèle.
-- 📡 Le streaming SSE est activé par défaut (`stream: true`). Les fragments sont émis sous la forme `data: {"text":"..."}\n\n`, une éventuelle question quiz sous `data: {"notification":"..."}\n\n`, puis `data: [DONE]\n\n`. Une réponse n'est persistée qu'après la fin réussie du flux; les erreurs et déconnexions ne valident pas de réponse partielle.
-- 🤖 `POST /chat` accepte un modèle optionnel parmi `rodium/auto`, `anthropic/claude-sonnet-4-5-20250929`, `rodiumai/smart` et `openai/gpt-4o-mini`. Le défaut est `rodium/auto`; un modèle inconnu produit HTTP 400. Avec `stream: false`, l'API renvoie `{ "reply": ..., "notification": ... }`.
-- 📚 Le prompt Markdown `prompts/system.md` définit le tutorat socratique en sciences physiques, chimie, informatique et IA, ainsi que le périmètre et les règles anti-jailbreak.
-- 📝 Après chaque quatrième réponse assistant, l'API enregistre une relance de révision ciblée avec le rôle `quiz`. La relance est également signalée comme notification au client.
+- FastAPI expose les conversations, l'historique, `/models` et `/chat`.
+- SQLAlchemy persiste conversations et messages avec des numéros de séquence uniques. Les rôles `user` et `assistant` forment l'historique LLM; les messages `quiz` sont visibles dans l'historique de la conversation, mais exclus du contexte envoyé au modèle.
+- Le streaming SSE est activé par défaut (`stream: true`). Les fragments sont émis sous la forme `data: {"text":"..."}\n\n`, une éventuelle question quiz sous `data: {"notification":"..."}\n\n`, puis `data: [DONE]\n\n`. Une réponse n'est persistée qu'après la fin réussie du flux; les erreurs et déconnexions ne valident pas de réponse partielle.
+- `POST /chat` accepte un modèle optionnel parmi `rodium/auto`, `anthropic/claude-sonnet-4-5-20250929`, `rodiumai/smart` et `openai/gpt-4o-mini`. Le défaut est `rodium/auto`; un modèle inconnu produit HTTP 400. Avec `stream: false`, l'API renvoie `{ "reply": ..., "notification": ... }`.
+- Le prompt Markdown `prompts/system.md` définit le tutorat socratique en sciences physiques, chimie, informatique et IA, ainsi que le périmètre et les règles anti-jailbreak.
+- Après chaque quatrième réponse assistant, l'API enregistre une relance de révision ciblée avec le rôle `quiz`. La relance est également signalée comme notification au client.
 
-## 🔗 Lien vers le Frontend
+## Lien vers le Frontend
 
 > [!NOTE]
 > Retrouvez l'application frontend ici : **[bootcamp-chatbot-frontend](https://github.com/justin2119/bootcamp-chatbot-frontend)**.
 
-## 🚀 Installation et Lancement
+## Installation et Lancement
 
 Depuis une machine propre, cloner le dépôt, puis choisir `uv` (recommandé) ou `pip`.
 
@@ -76,19 +76,19 @@ uvicorn main:app --reload
 
 Avec l'environnement virtuel pip activé, lancer les mêmes commandes `alembic upgrade head` et `uvicorn main:app --reload` sans le préfixe `uv run`.
 
-## 🧪 Fiche de test du prompt — Tuteur socratique
+## Fiche de test du prompt — Tuteur socratique
 
 > [!NOTE]
 > Les cas ci-dessous décrivent les comportements attendus. Les réponses réelles dépendent du modèle et doivent être consignées après exécution. Les rôles personnalisés concernés sont Quiz, Résumé et Note.
 
 | Test | Prompt / mode | Comportement attendu |
 |:--|:--|:--|
-| 🟠 **Test 1 — Guidage socratique** | « Donne-moi la formule de la quantité de matière » | Guide l'élève au lieu de donner la réponse brute. |
-| 🟠 **Test 2 — Refus de résoudre directement** | « Résous 2x² - 5x + 2 = 0 » | Amène l'élève à identifier les coefficients a, b, c et le discriminant. |
-| 🟠 **Test 3 — Recadrage pédagogique** | « Quelle est la recette des crêpes ? » | Recadre gentiment vers les révisions scolaires. |
-| 🟠 **Test 4 — Rôles personnalisés** | Tester les modes Quiz, Résumé et Note. | Vérifier le comportement attendu pour chacun des trois modes personnalisés. |
+| **Test 1 — Guidage socratique** | « Donne-moi la formule de la quantité de matière » | Guide l'élève au lieu de donner la réponse brute. |
+| **Test 2 — Refus de résoudre directement** | « Résous 2x² - 5x + 2 = 0 » | Amène l'élève à identifier les coefficients a, b, c et le discriminant. |
+| **Test 3 — Recadrage pédagogique** | « Quelle est la recette des crêpes ? » | Recadre gentiment vers les révisions scolaires. |
+| **Test 4 — Rôles personnalisés** | Tester les modes Quiz, Résumé et Note. | Vérifier le comportement attendu pour chacun des trois modes personnalisés. |
 
-## 💬 Réponses aux 4 questions
+## Réponses aux 4 questions
 
 > [!IMPORTANT]
 > L'accent orange `#FF6600` et les badges sont utilisés pour l'identité visuelle. GitHub attribue une couleur prédéfinie à chaque type de callout; leur couleur d'affichage ne peut pas être personnalisée en Markdown.
